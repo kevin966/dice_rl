@@ -33,21 +33,22 @@ from tf_agents.trajectories import policy_step
 from tf_agents.utils import nest_utils
 import tensorflow_probability as tfp
 
-from dice_rl.environments import suites
-from dice_rl.environments.infinite_cartpole import InfiniteCartPole
-from dice_rl.environments.infinite_frozenlake import InfiniteFrozenLake
-from dice_rl.environments.infinite_reacher import InfiniteReacher
-from dice_rl.environments.gridworld import navigation
-from dice_rl.environments.gridworld import maze
-from dice_rl.environments.gridworld import point_maze
-from dice_rl.environments.gridworld import taxi
-from dice_rl.environments.gridworld import tree
-from dice_rl.environments.gridworld import low_rank
-from dice_rl.environments import bandit
-from dice_rl.environments import bernoulli_bandit
-from dice_rl.environments import line
-from dice_rl.environments import contextual_bandit
-import dice_rl.utils.common as common_lib
+import sys, os; sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from environments import suites
+from environments.infinite_cartpole import InfiniteCartPole
+from environments.infinite_frozenlake import InfiniteFrozenLake
+from environments.infinite_reacher import InfiniteReacher
+from environments.gridworld import navigation
+from environments.gridworld import maze
+from environments.gridworld import point_maze
+from environments.gridworld import taxi
+from environments.gridworld import tree
+from environments.gridworld import low_rank
+from environments import bandit
+from environments import bernoulli_bandit
+from environments import line
+from environments import contextual_bandit
+import utils.common as common_lib
 
 
 def get_dqn_policy(tf_env):
@@ -80,20 +81,19 @@ def load_policy(policy, env_name, load_dir, ckpt_file=None):
   checkpoint = tf.train.Checkpoint(policy=policy)
   if ckpt_file is None:
     checkpoint_filename = tf.train.latest_checkpoint(load_dir)
+    checkpoint_filepath = checkpoint.save(file_prefix=os.path.join(load_dir, 'policy_checkpoint'))
+    # Save the latest checkpoint filename.
+    print('Latest checkpoint: %s' % checkpoint_filename)
   else:
-    checkpoint_filename = os.path.join(load_dir, ckpt_file)
-  print('Loading policy from %s.' % checkpoint_filename)
-  checkpoint.restore(checkpoint_filename).assert_existing_objects_matched()
+    checkpoint_filepath = os.path.join(load_dir, ckpt_file)
+  # print('Loading policy from %s.' % checkpoint_filename)
+  checkpoint.restore(checkpoint_filepath).assert_existing_objects_matched()
   # Unwrap greedy wrapper.
   return policy.wrapped_policy
 
 
-def get_env_and_dqn_policy(env_name,
-                           load_dir,
-                           env_seed=0,
-                           epsilon=0.0,
-                           ckpt_file=None):
-  gym_env = suites.load_gym(env_name)
+def get_env_and_dqn_policy(env_name, load_dir, env_seed=0, epsilon=0.0, ckpt_file=None, gym_kwargs=None):
+  gym_env = suites.load_gym(env_name, gym_kwargs=gym_kwargs)
   gym_env.seed(env_seed)
   env = tf_py_environment.TFPyEnvironment(gym_env)
   dqn_policy = get_dqn_policy(env)
@@ -102,11 +102,7 @@ def get_env_and_dqn_policy(env_name,
       policy, epsilon=epsilon, emit_log_probability=True)
 
 
-def get_env_and_policy(load_dir,
-                       env_name,
-                       alpha,
-                       env_seed=0,
-                       tabular_obs=False):
+def get_env_and_policy(load_dir, env_name, alpha, env_seed=0, tabular_obs=False, gym_kwargs=None):
   if env_name == 'taxi':
     env = taxi.Taxi(tabular_obs=tabular_obs)
     env.seed(env_seed)
@@ -283,8 +279,9 @@ def get_env_and_policy(load_dir,
         'FrozenLake-v1',
         os.path.join(load_dir, 'FrozenLake-v0', 'train', 'policy'),
         env_seed=env_seed,
-        epsilon=0.2 * (1 - alpha),
-        ckpt_file='ckpt-100000')
+        epsilon=1.0 * (1 - alpha),
+        ckpt_file='ckpt-100000',
+        gym_kwargs=gym_kwargs)
     env = InfiniteFrozenLake()
     tf_env = tf_py_environment.TFPyEnvironment(gym_wrapper.GymWrapper(env))
   elif env_name in ['Reacher-v2', 'reacher']:

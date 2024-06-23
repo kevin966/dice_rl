@@ -21,8 +21,11 @@ import tensorflow.compat.v2 as tf
 
 from typing import Any, Callable, Iterable, Optional, Sequence, Tuple, Union
 
-from dice_rl.data.dataset import Dataset, EnvStep, OffpolicyDataset, OnpolicyDataset, StepType
-from dice_rl.utils import common as common_lib
+import sys, os; sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# from dice_rl.data.dataset import Dataset, EnvStep, OffpolicyDataset, OnpolicyDataset, StepType
+from data.dataset import Dataset, EnvStep, OffpolicyDataset, OnpolicyDataset, StepType
+# from dice_rl.utils import common as common_lib
+from utils import common as common_lib
 
 
 def _default_by_steps_reward_fn(env_step):

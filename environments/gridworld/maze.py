@@ -7,8 +7,11 @@ import tensorflow.compat.v2 as tf
 from gym import spaces
 from gym.utils import seeding
 
-import dice_rl.utils.common as common_utils
-from dice_rl.environments.gridworld.navigation import Navigation
+import sys, os; sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# import dice_rl.utils.common as common_utils
+import utils.common as common_utils
+# from dice_rl.environments.gridworld.navigation import Navigation
+from environments.gridworld.navigation import Navigation
 
 
 class Maze(Navigation):

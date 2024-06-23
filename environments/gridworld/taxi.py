@@ -25,7 +25,9 @@ import os
 from gym import spaces
 from gym.utils import seeding
 
-import dice_rl.utils.common as common_utils
+import sys, os; sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# import dice_rl.utils.common as common_utils
+import utils.common as common_utils
 
 
 class Taxi(gym.Env):

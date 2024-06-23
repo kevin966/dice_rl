@@ -28,7 +28,9 @@ from tf_agents.policies import tf_policy
 from tf_agents import specs
 from tf_agents.utils import nest_utils
 
-from dice_rl.data.dataset import OnpolicyDataset, EnvStep, StepType
+import sys, os; sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# from dice_rl.data.dataset import OnpolicyDataset, EnvStep, StepType
+from data.dataset import OnpolicyDataset, EnvStep, StepType
 
 # pytype: disable=attribute-error
 

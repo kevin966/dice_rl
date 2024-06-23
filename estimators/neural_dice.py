@@ -23,9 +23,13 @@ from tf_agents.policies import tf_policy
 from tf_agents.utils import common as tfagents_common
 from typing import Any, Callable, Iterable, Optional, Sequence, Tuple, Union
 
-import dice_rl.data.dataset as dataset_lib
-import dice_rl.utils.common as common_lib
-import dice_rl.estimators.estimator as estimator_lib
+import sys, os; sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# import dice_rl.data.dataset as dataset_lib
+# import dice_rl.utils.common as common_lib
+# import dice_rl.estimators.estimator as estimator_lib
+import data.dataset as dataset_lib
+import utils.common as common_lib
+import estimators.estimator as estimator_lib
 
 
 class NeuralDice(object):
@@ -104,10 +108,8 @@ class NeuralDice(object):
     self._num_samples = num_samples
 
     self._solve_for_state_action_ratio = solve_for_state_action_ratio
-    if (not self._solve_for_state_action_ratio and
-        not self._dataset_spec.has_log_probability()):
-      raise ValueError('Dataset must contain log-probability when '
-                       'solve_for_state_action_ratio is False.')
+    if (not self._solve_for_state_action_ratio and not self._dataset_spec.has_log_probability()):
+      raise ValueError('Dataset must contain log-probability when solve_for_state_action_ratio is False.')
 
     if f_exponent <= 1:
       raise ValueError('Exponent for f must be greater than 1.')
@@ -115,8 +117,7 @@ class NeuralDice(object):
     self._f_fn = lambda x: tf.abs(x)**f_exponent / f_exponent
     self._fstar_fn = lambda x: tf.abs(x)**fstar_exponent / fstar_exponent
 
-    self._categorical_action = common_lib.is_categorical_spec(
-        self._dataset_spec.action)
+    self._categorical_action = common_lib.is_categorical_spec(self._dataset_spec.action)
     if not self._categorical_action and self._num_samples is None:
       self._num_samples = 1
 
@@ -127,21 +128,25 @@ class NeuralDice(object):
     self._lam = tf.Variable(0.0)
     self._initialize()
 
+
   def _initialize(self):
     pass
 
+
   def _get_value(self, network, env_step):
+    """Gets the value from the neural network based on the environment step."""
     if self._solve_for_state_action_ratio:
       return network((env_step.observation, env_step.action))[0]
     else:
       return network((env_step.observation,))[0]
 
+
   def _get_average_value(self, network, env_step, policy):
+    """Gets the average value from the neural network based on the environment step and policy."""
     if self._solve_for_state_action_ratio:
       tfagents_step = dataset_lib.convert_to_tfagents_timestep(env_step)
       if self._categorical_action and self._num_samples is None:
-        action_weights = policy.distribution(
-            tfagents_step).action.probs_parameter()
+        action_weights = policy.distribution(tfagents_step).action.probs_parameter()
         action_dtype = self._dataset_spec.action.dtype
         batch_size = tf.shape(action_weights)[0]
         num_actions = tf.shape(action_weights)[-1]
@@ -152,26 +157,22 @@ class NeuralDice(object):
         batch_size = tf.shape(env_step.observation)[0]
         num_actions = self._num_samples
         action_weights = tf.ones([batch_size, num_actions]) / num_actions
-        actions = tf.stack(
-            [policy.action(tfagents_step).action for _ in range(num_actions)],
-            axis=1)
+        actions = tf.stack([policy.action(tfagents_step).action for _ in range(num_actions)], axis=1)
 
-      flat_actions = tf.reshape(actions, [batch_size * num_actions] +
-                                actions.shape[2:].as_list())
+      flat_actions = tf.reshape(actions, [batch_size * num_actions] + actions.shape[2:].as_list())
       flat_observations = tf.reshape(
-          tf.tile(env_step.observation[:, None, ...],
-                  [1, num_actions] + [1] * len(env_step.observation.shape[1:])),
+          tf.tile(env_step.observation[:, None, ...], [1, num_actions] + [1] * len(env_step.observation.shape[1:])),
           [batch_size * num_actions] + env_step.observation.shape[1:].as_list())
 
       flat_values, _ = network((flat_observations, flat_actions))
-      values = tf.reshape(flat_values, [batch_size, num_actions] +
-                          flat_values.shape[1:].as_list())
-      return tf.reduce_sum(
-          values * common_lib.reverse_broadcast(action_weights, values), axis=1)
+      values = tf.reshape(flat_values, [batch_size, num_actions] + flat_values.shape[1:].as_list())
+      return tf.reduce_sum(values * common_lib.reverse_broadcast(action_weights, values), axis=1)
     else:
       return network((env_step.observation,))[0]
 
+
   def _orthogonal_regularization(self, network):
+    """Computes the orthogonal regularisation term for the neural network."""
     reg = 0
     for layer in network.layers:
       if isinstance(layer, tf.keras.layers.Dense):
@@ -179,12 +180,12 @@ class NeuralDice(object):
         reg += tf.reduce_sum(tf.math.square(prod * (1 - tf.eye(prod.shape[0]))))
     return reg
 
+
   def train_loss(self, initial_env_step, env_step, next_env_step, policy):
+    """Calculates the training loss for the given batch of data."""
     nu_values = self._get_value(self._nu_network, env_step)
-    initial_nu_values = self._get_average_value(self._nu_network,
-                                                initial_env_step, policy)
-    next_nu_values = self._get_average_value(self._nu_network, next_env_step,
-                                             policy)
+    initial_nu_values = self._get_average_value(self._nu_network, initial_env_step, policy)
+    next_nu_values = self._get_average_value(self._nu_network, next_env_step, policy)
 
     zeta_values = self._get_value(self._zeta_network, env_step)
 
@@ -192,14 +193,10 @@ class NeuralDice(object):
     policy_ratio = 1.0
     if not self._solve_for_state_action_ratio:
       tfagents_step = dataset_lib.convert_to_tfagents_timestep(env_step)
-      policy_log_probabilities = policy.distribution(
-          tfagents_step).action.log_prob(env_step.action)
-      policy_ratio = tf.exp(policy_log_probabilities -
-                            env_step.get_log_probability())
+      policy_log_probabilities = policy.distribution(tfagents_step).action.log_prob(env_step.action)
+      policy_ratio = tf.exp(policy_log_probabilities - env_step.get_log_probability())
 
-    bellman_residuals = (
-        common_lib.reverse_broadcast(discounts * policy_ratio, nu_values) *
-        next_nu_values - nu_values - self._norm_regularizer * self._lam)
+    bellman_residuals = (common_lib.reverse_broadcast(discounts * policy_ratio, nu_values) * next_nu_values - nu_values - self._norm_regularizer * self._lam)
     if not self._zero_reward:
       bellman_residuals += policy_ratio * self._reward_fn(env_step)
 
@@ -222,12 +219,10 @@ class NeuralDice(object):
       nu_loss *= weights
       zeta_loss *= weights
 
-    return nu_loss, zeta_loss, lam_loss
+    return nu_loss, zeta_loss, lam_loss, zeta_values
 
   @tf.function
-  def train_step(self, initial_env_step: dataset_lib.EnvStep,
-                 experience: dataset_lib.EnvStep,
-                 target_policy: tf_policy.TFPolicy):
+  def train_step(self, initial_env_step: dataset_lib.EnvStep, experience: dataset_lib.EnvStep, target_policy: tf_policy.TFPolicy):
     """Performs a single training step based on batch.
 
     Args:
@@ -242,36 +237,26 @@ class NeuralDice(object):
     env_step = tf.nest.map_structure(lambda t: t[:, 0, ...], experience)
     next_env_step = tf.nest.map_structure(lambda t: t[:, 1, ...], experience)
 
-    with tf.GradientTape(
-        watch_accessed_variables=False, persistent=True) as tape:
+    with tf.GradientTape(watch_accessed_variables=False, persistent=True) as tape:
       tape.watch(self._nu_network.variables)
       tape.watch(self._zeta_network.variables)
       tape.watch([self._lam])
-      nu_loss, zeta_loss, lam_loss = self.train_loss(initial_env_step, env_step,
-                                                     next_env_step,
-                                                     target_policy)
-      nu_loss += self._nu_regularizer * self._orthogonal_regularization(
-          self._nu_network)
-      zeta_loss += self._zeta_regularizer * self._orthogonal_regularization(
-          self._zeta_network)
+      nu_loss, zeta_loss, lam_loss, distribution_correction_ratios = self.train_loss(initial_env_step, env_step, next_env_step, target_policy)
+      nu_loss += self._nu_regularizer * self._orthogonal_regularization(self._nu_network)
+      zeta_loss += self._zeta_regularizer * self._orthogonal_regularization(self._zeta_network)
 
     nu_grads = tape.gradient(nu_loss, self._nu_network.variables)
-    nu_grad_op = self._nu_optimizer.apply_gradients(
-        zip(nu_grads, self._nu_network.variables))
+    nu_grad_op = self._nu_optimizer.apply_gradients(zip(nu_grads, self._nu_network.variables))
 
     zeta_grads = tape.gradient(zeta_loss, self._zeta_network.variables)
-    zeta_grad_op = self._zeta_optimizer.apply_gradients(
-        zip(zeta_grads, self._zeta_network.variables))
+    zeta_grad_op = self._zeta_optimizer.apply_gradients(zip(zeta_grads, self._zeta_network.variables))
 
     lam_grads = tape.gradient(lam_loss, [self._lam])
-    lam_grad_op = self._lam_optimizer.apply_gradients(
-        zip(lam_grads, [self._lam]))
+    lam_grad_op = self._lam_optimizer.apply_gradients(zip(lam_grads, [self._lam]))
 
-    return (tf.reduce_mean(nu_loss), tf.reduce_mean(zeta_loss),
-            tf.reduce_mean(lam_loss))
+    return tf.reduce_mean(nu_loss), tf.reduce_mean(zeta_loss), tf.reduce_mean(lam_loss), distribution_correction_ratios
 
-  def estimate_average_reward(self, dataset: dataset_lib.OffpolicyDataset,
-                              target_policy: tf_policy.TFPolicy):
+  def estimate_average_reward(self, dataset: dataset_lib.OffpolicyDataset, target_policy: tf_policy.TFPolicy):
     """Estimates value (average per-step reward) of policy.
 
     Args:
@@ -287,10 +272,8 @@ class NeuralDice(object):
       policy_ratio = 1.0
       if not self._solve_for_state_action_ratio:
         tfagents_timestep = dataset_lib.convert_to_tfagents_timestep(env_step)
-        target_log_probabilities = target_policy.distribution(
-            tfagents_timestep).action.log_prob(env_step.action)
-        policy_ratio = tf.exp(target_log_probabilities -
-                              env_step.get_log_probability())
+        target_log_probabilities = target_policy.distribution(tfagents_timestep).action.log_prob(env_step.action)
+        policy_ratio = tf.exp(target_log_probabilities - env_step.get_log_probability())
       return zeta * common_lib.reverse_broadcast(policy_ratio, zeta)
 
     def init_nu_fn(env_step, valid_steps):
@@ -300,8 +283,7 @@ class NeuralDice(object):
         first_step = tf.nest.map_structure(lambda t: t[0, ...], env_step)
       else:
         first_step = tf.nest.map_structure(lambda t: t[:, 0, ...], env_step)
-      value = self._get_average_value(self._nu_network, first_step,
-                                      target_policy)
+      value = self._get_average_value(self._nu_network, first_step, target_policy)
       return value
 
     nu_zero = (1 - self._gamma) * estimator_lib.get_fullbatch_average(
@@ -322,12 +304,9 @@ class NeuralDice(object):
     tf.summary.scalar('lam', self._norm_regularizer * self._lam)
     tf.summary.scalar('dual_step', dual_step)
 
-    constraint, f_nu, f_zeta = self._eval_constraint_and_regs(
-        dataset, target_policy)
+    constraint, f_nu, f_zeta = self._eval_constraint_and_regs(dataset, target_policy)
     lagrangian = nu_zero + self._norm_regularizer * self._lam + constraint
-    overall = (
-        lagrangian + self._primal_regularizer * f_nu -
-        self._dual_regularizer * f_zeta)
+    overall = (lagrangian + self._primal_regularizer * f_nu - self._dual_regularizer * f_zeta)
     tf.summary.scalar('constraint', constraint)
     tf.summary.scalar('nu_reg', self._primal_regularizer * f_nu)
     tf.summary.scalar('zeta_reg', self._dual_regularizer * f_zeta)
@@ -342,8 +321,7 @@ class NeuralDice(object):
 
     return dual_step
 
-  def _eval_constraint_and_regs(self, dataset: dataset_lib.OffpolicyDataset,
-                                target_policy: tf_policy.TFPolicy):
+  def _eval_constraint_and_regs(self, dataset: dataset_lib.OffpolicyDataset, target_policy: tf_policy.TFPolicy):
     """Get the residual term and the primal and dual regularizers during eval.
 
     Args:
@@ -358,13 +336,10 @@ class NeuralDice(object):
     env_step = tf.nest.map_structure(lambda t: t[:, 0, ...], experience)
     next_env_step = tf.nest.map_structure(lambda t: t[:, 1, ...], experience)
     nu_values = self._get_value(self._nu_network, env_step)
-    next_nu_values = self._get_average_value(self._nu_network, next_env_step,
-                                             target_policy)
+    next_nu_values = self._get_average_value(self._nu_network, next_env_step, target_policy)
     zeta_values = self._get_value(self._zeta_network, env_step)
     discounts = self._gamma * next_env_step.discount
-    bellman_residuals = (
-        common_lib.reverse_broadcast(discounts, nu_values) * next_nu_values -
-        nu_values - self._norm_regularizer * self._lam)
+    bellman_residuals = (common_lib.reverse_broadcast(discounts, nu_values) * next_nu_values - nu_values - self._norm_regularizer * self._lam)
 
     # Always include reward during eval
     bellman_residuals += self._reward_fn(env_step)

@@ -27,7 +27,9 @@ from tf_agents.specs import tensor_spec
 from tf_agents.utils import common
 import tensorflow_probability as tfp
 
-from dice_rl.data.dataset import EnvStep, OffpolicyDataset, StepType
+import sys, os; sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# from dice_rl.data.dataset import EnvStep, OffpolicyDataset, StepType
+from data.dataset import EnvStep, OffpolicyDataset, StepType
 
 EpisodeInfo = collections.namedtuple(
     'EpisodeInfo', ['episode_start_id', 'episode_end_id',
@@ -187,8 +189,7 @@ class TFOffpolicyDataset(tf.Module, OffpolicyDataset):
       return ret_op
 
   @tf.Module.with_name_scope
-  def get_step(self, batch_size: Optional[int] = None,
-               num_steps: Optional[int] = None) -> EnvStep:
+  def get_step(self, batch_size: Optional[int] = None, num_steps: Optional[int] = None) -> EnvStep:
     batch_size_ = batch_size
     if batch_size_ is None:
       batch_size_ = 1
@@ -198,21 +199,18 @@ class TFOffpolicyDataset(tf.Module, OffpolicyDataset):
 
     if self._last_valid_steps_id < 0:
       raise ValueError('No valid steps for sampling in the dataset.')
-    all_valid_steps = self._valid_steps_table.read(
-        tf.range(self._last_valid_steps_id + 1))
+    all_valid_steps = self._valid_steps_table.read(tf.range(self._last_valid_steps_id + 1))
     # Can't collect trajectories that trail off end of dataset.
     if tf.reduce_min(all_valid_steps) + num_steps_ > self._last_step_id + 1:
       raise ValueError('Not enough steps in the dataset.')
 
-    probs = tf.cast(all_valid_steps + num_steps_ <= self._last_step_id + 1,
-                    tf.float32)
+    probs = tf.cast(all_valid_steps + num_steps_ <= self._last_step_id + 1, tf.float32)
     probs /= tf.reduce_sum(probs)
     distribution = tfp.distributions.Categorical(probs=probs, dtype=tf.int64)
     sampled_valid_ids = distribution.sample(batch_size_)
     sampled_valid_steps = tf.gather(all_valid_steps, sampled_valid_ids)
 
-    rows_to_get = (sampled_valid_steps[:, None] +
-                   tf.range(num_steps_, dtype=tf.int64)[None, :])
+    rows_to_get = (sampled_valid_steps[:, None] + tf.range(num_steps_, dtype=tf.int64)[None, :])
     rows_to_get = tf.math.mod(rows_to_get, self._last_step_id + 1)
     steps = self._data_table.read(rows_to_get)
     self._last_rows_read = rows_to_get

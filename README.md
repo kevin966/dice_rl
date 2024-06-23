@@ -6,6 +6,15 @@ This library unifies the distribution correction estimation algorithms for off-p
 * [Reinforcement Learning via Fenchel-Rockafellar Duality](https://arxiv.org/abs/2001.01866)
 Please cite these work accordingly upon using this library.
 
+## RESEARCH PROJECT CSE3000
+Adjust the variables at the beginning of the main method of 'calculate_visitation_mismatch.py' to obtain the desired datasets and plots.
+
+Afterwards, run the following command to generate the datasets and plots utilised in the research paper:
+
+    python3 state_visitation_mismatch/calculate_visitation_mismatch.py
+
+Don't pass along the 'gym_kwargs' variable in 'create_dataset.py' when calling the 'get_onpolicy_dataset' method to obtain the cumulative reward convergence plot.
+
 ## Summary
 Existing DICE algorithms are the results of particular regularization choices in the Lagrangian of the Q-LP and d-LP policy values.
 ![Regularized Lagrangian](figures/reg_lang.png)*Choices of regularization (colored) in the Lagrangian.*

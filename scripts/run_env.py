@@ -22,8 +22,9 @@ from absl import flags
 import numpy as np
 import tensorflow.compat.v2 as tf
 
-import dice_rl.environments.gridworld.navigation as navigation
-import dice_rl.data.gym_onpolicy_dataset as gym_onpolicy_dataset
+import sys, os; sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import environments.gridworld.navigation as navigation
+import data.gym_onpolicy_dataset as gym_onpolicy_dataset
 
 FLAGS = flags.FLAGS
 

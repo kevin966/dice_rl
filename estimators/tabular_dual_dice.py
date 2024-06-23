@@ -22,8 +22,11 @@ from tf_agents.specs import tensor_spec
 from tf_agents.policies import tf_policy
 from typing import Any, Callable, Iterable, Optional, Sequence, Tuple, Union
 
-import dice_rl.data.dataset as dataset_lib
-import dice_rl.estimators.estimator as estimator_lib
+import sys, os; sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# import dice_rl.data.dataset as dataset_lib
+# import dice_rl.estimators.estimator as estimator_lib
+import data.dataset as dataset_lib
+import estimators.estimator as estimator_lib
 
 
 def _is_categorical_spec(spec):

@@ -29,63 +29,92 @@ import pickle
 from tf_agents.environments import gym_wrapper
 from tf_agents.environments import tf_py_environment
 
-from dice_rl.environments.env_policies import get_target_policy
-import dice_rl.environments.gridworld.navigation as navigation
-import dice_rl.environments.gridworld.tree as tree
-import dice_rl.environments.gridworld.taxi as taxi
-from dice_rl.estimators.neural_dice import NeuralDice
-from dice_rl.estimators import estimator as estimator_lib
-from dice_rl.networks.value_network import ValueNetwork
-import dice_rl.utils.common as common_utils
-from dice_rl.data.dataset import Dataset, EnvStep, StepType
-from dice_rl.data.tf_offpolicy_dataset import TFOffpolicyDataset
+import sys, os; sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# from dice_rl.environments.env_policies import get_target_policy
+# import dice_rl.environments.gridworld.navigation as navigation
+# import dice_rl.environments.gridworld.tree as tree
+# import dice_rl.environments.gridworld.taxi as taxi
+# from dice_rl.estimators.neural_dice import NeuralDice
+# from dice_rl.estimators import estimator as estimator_lib
+# from dice_rl.networks.value_network import ValueNetwork
+# import dice_rl.utils.common as common_utils
+# from dice_rl.data.dataset import Dataset, EnvStep, StepType
+# from dice_rl.data.tf_offpolicy_dataset import TFOffpolicyDataset
+from environments.env_policies import get_target_policy
+import environments.gridworld.navigation as navigation
+import environments.gridworld.tree as tree
+import environments.gridworld.taxi as taxi
+from estimators.neural_dice import NeuralDice
+from estimators import estimator as estimator_lib
+from networks.value_network import ValueNetwork
+import utils.common as common_utils
+from data.dataset import Dataset, EnvStep, StepType
+from data.tf_offpolicy_dataset import TFOffpolicyDataset
 
 
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string('load_dir', None, 'Directory to load dataset from.')
-flags.DEFINE_string('save_dir', None,
-                    'Directory to save the model and estimation results.')
+flags.DEFINE_string('save_dir', None, 'Directory to save the model and estimation results.')
 flags.DEFINE_string('env_name', 'grid', 'Environment name.')
+flags.DEFINE_integer('env_size', 4, 'Dimensions of the environment (Default is 4x4)')
+flags.DEFINE_bool('default', False, 'Whether the default map of the environment is used')
 flags.DEFINE_integer('seed', 0, 'Initial random seed.')
-flags.DEFINE_bool('tabular_obs', False, 'Whether to use tabular observations.')
-flags.DEFINE_integer('num_trajectory', 1000,
-                     'Number of trajectories to collect.')
-flags.DEFINE_integer('max_trajectory_length', 40,
-                     'Cutoff trajectory at this step.')
+flags.DEFINE_bool('tabular_obs', True, 'Whether to use tabular observations.')
+flags.DEFINE_integer('num_trajectory', 1000, 'Number of trajectories to collect.')
+flags.DEFINE_integer('max_trajectory_length', 40, 'Cutoff trajectory at this step.')
 flags.DEFINE_float('alpha', 0.0, 'How close to target policy.')
 flags.DEFINE_float('gamma', 0.99, 'Discount factor.')
 flags.DEFINE_float('nu_learning_rate', 0.0001, 'Learning rate for nu.')
 flags.DEFINE_float('zeta_learning_rate', 0.0001, 'Learning rate for zeta.')
 flags.DEFINE_float('nu_regularizer', 0.0, 'Ortho regularization on nu.')
 flags.DEFINE_float('zeta_regularizer', 0.0, 'Ortho regularization on zeta.')
-flags.DEFINE_integer('num_steps', 100000, 'Number of training steps.')
-flags.DEFINE_integer('batch_size', 2048, 'Batch size.')
+flags.DEFINE_integer('num_steps', 25000, 'Number of training steps.')
+flags.DEFINE_integer('batch_size', 512, 'Batch size.')
 
 flags.DEFINE_float('f_exponent', 2, 'Exponent for f function.')
-flags.DEFINE_bool('primal_form', False,
-                  'Whether to use primal form of loss for nu.')
+flags.DEFINE_bool('primal_form', False, 'Whether to use primal form of loss for nu.')
 
-flags.DEFINE_float('primal_regularizer', 0.,
-                   'LP regularizer of primal variables.')
+flags.DEFINE_float('primal_regularizer', 0., 'LP regularizer of primal variables.')
 flags.DEFINE_float('dual_regularizer', 1., 'LP regularizer of dual variables.')
-flags.DEFINE_bool('zero_reward', False,
-                  'Whether to ignore reward in optimization.')
-flags.DEFINE_float('norm_regularizer', 1.,
-                   'Weight of normalization constraint.')
+flags.DEFINE_bool('zero_reward', False, 'Whether to ignore reward in optimization.')
+flags.DEFINE_float('norm_regularizer', 1., 'Weight of normalization constraint.')
 flags.DEFINE_bool('zeta_pos', True, 'Whether to enforce positivity constraint.')
 
 flags.DEFINE_float('scale_reward', 1., 'Reward scaling factor.')
 flags.DEFINE_float('shift_reward', 0., 'Reward shift factor.')
-flags.DEFINE_string(
-    'transform_reward', None, 'Non-linear reward transformation'
-    'One of [exp, cuberoot, None]')
+flags.DEFINE_string('transform_reward', None, 'Non-linear reward transformation; one of [exp, cuberoot, None]')
+
+
+def create_state_visitation_distribution(distribution_correction_ratios, transitions_batch, ratios):
+  """Creates a dictionary of the transitions (state-action pairs) and distribution correction ratios."""
+  # Extracting the current stated and actions from the environment steps (transitions_batch)
+  states = transitions_batch.observation.numpy()[:, 0]
+  actions = transitions_batch.action.numpy()[:, 0]
+
+  # Iterating through each state-action pair and corresponding ratio
+  for state, action, ratio in zip(states, actions, ratios):
+    # Convert state and action to tuples
+    state_action_pair = (state, action)
+    # Only update if the state-action pair exists in the dictionary
+    if state_action_pair in distribution_correction_ratios:
+      # Ensure the ratio is hashable
+      if isinstance(ratio, np.ndarray):
+        ratio = tuple(ratio.tolist())
+      print(f'Updating {state_action_pair} with ratio {ratio}')
+      distribution_correction_ratios[state_action_pair] = ratio
+    else:
+      print(f'Pair {state_action_pair} not found in the existing dictionary.')
+
+  return distribution_correction_ratios
 
 
 def main(argv):
   load_dir = FLAGS.load_dir
   save_dir = FLAGS.save_dir
   env_name = FLAGS.env_name
+  env_size = FLAGS.env_size
+  default = FLAGS.default
   seed = FLAGS.seed
   tabular_obs = FLAGS.tabular_obs
   num_trajectory = FLAGS.num_trajectory
@@ -113,6 +142,7 @@ def main(argv):
   transform_reward = FLAGS.transform_reward
 
   def reward_fn(env_step):
+    """Defines the reward function based on the provided flags."""
     reward = env_step.reward * scale_reward + shift_reward
     if transform_reward is None:
       return reward
@@ -124,9 +154,12 @@ def main(argv):
       raise ValueError('Reward {} not implemented.'.format(transform_reward))
     return reward
 
-  hparam_str = ('{ENV_NAME}_tabular{TAB}_alpha{ALPHA}_seed{SEED}_'
+  # Constructs strings for hyperparameters to use in paths and logging
+  hparam_str = ('{ENV_NAME}_size{ENV_SIZE}_default{DEFAULT}_tabular{TAB}_alpha{ALPHA}_seed{SEED}_'
                 'numtraj{NUM_TRAJ}_maxtraj{MAX_TRAJ}').format(
                     ENV_NAME=env_name,
+                    ENV_SIZE=env_size,
+                    DEFAULT=default,
                     TAB=tabular_obs,
                     ALPHA=alpha,
                     SEED=seed,
@@ -148,6 +181,7 @@ def main(argv):
           SCALER=scale_reward,
           SHIFTR=shift_reward,
           TRANSR=transform_reward)
+  # Creates the directory for saving results and sets up the summary writer
   if save_dir is not None:
     save_dir = os.path.join(save_dir, hparam_str, train_hparam_str)
     summary_writer = tf.summary.create_file_writer(logdir=save_dir)
@@ -155,24 +189,25 @@ def main(argv):
   else:
     tf.summary.create_noop_writer()
 
+  # Loads the dataset from the specified directory
   directory = os.path.join(load_dir, hparam_str)
   print('Loading dataset from', directory)
-  dataset = Dataset.load(directory)
-  all_steps = dataset.get_all_steps()
+  dataset = Dataset.load(directory)  # Behaviour policy dataset
+  all_steps = dataset.get_all_steps()  # All non-terminal steps in the dataset
   max_reward = tf.reduce_max(all_steps.reward)
   min_reward = tf.reduce_min(all_steps.reward)
-  print('num loaded steps', dataset.num_steps)
-  print('num loaded total steps', dataset.num_total_steps)
-  print('num loaded episodes', dataset.num_episodes)
-  print('num loaded total episodes', dataset.num_total_episodes)
+  print('num loaded steps', dataset.num_steps)  # Number of steps in the dataset excluding terminal steps
+  print('num loaded total steps', dataset.num_total_steps)  # Number of total, unfiltered steps in the dataset
+  print('num loaded episodes', dataset.num_episodes)  # Number of completed episodes in the dataset
+  print('num loaded total episodes', dataset.num_total_episodes)  # Number of partial or completed episodes in the dataset
   print('min reward', min_reward, 'max reward', max_reward)
-  print('behavior per-step',
-        estimator_lib.get_fullbatch_average(dataset, gamma=gamma))
-  target_dataset = Dataset.load(
-      directory.replace('alpha{}'.format(alpha), 'alpha1.0'))
-  print('target per-step',
-        estimator_lib.get_fullbatch_average(target_dataset, gamma=1.))
+  print('behavior per-step', estimator_lib.get_fullbatch_average(dataset, gamma=gamma))
 
+  target_dataset = Dataset.load(directory.replace('alpha{}'.format(alpha), 'alpha1.0'))  # Target policy dataset
+  ground_truth = estimator_lib.get_fullbatch_average(target_dataset, gamma=1.)
+  print('target per-step', ground_truth)
+
+  # Sets up the networks for nu and zeta
   activation_fn = tf.nn.relu
   kernel_initializer = tf.keras.initializers.GlorotUniform()
   hidden_dims = (64, 64)
@@ -192,10 +227,12 @@ def main(argv):
       kernel_initializer=kernel_initializer,
       last_kernel_initializer=kernel_initializer)
 
+  # Sets up the optimisers
   nu_optimizer = tf.keras.optimizers.Adam(nu_learning_rate, clipvalue=1.0)
   zeta_optimizer = tf.keras.optimizers.Adam(zeta_learning_rate, clipvalue=1.0)
   lam_optimizer = tf.keras.optimizers.Adam(nu_learning_rate, clipvalue=1.0)
 
+  # Initialises the NeuralDice estimator
   estimator = NeuralDice(
       dataset.spec,
       nu_network,
@@ -220,20 +257,94 @@ def main(argv):
   target_policy = get_target_policy(load_dir, env_name, tabular_obs)
   running_losses = []
   running_estimates = []
+
+  # Generates the file name of the state-visitation distribution of the behaviour policy
+  file_name = ('3a_state_visitation_distributions_{ENV_NAME}_size{ENV_SIZE}_default{DEFAULT}_tabular{TAB}_'
+               'alpha{ALPHA}_seed{SEED}_numtraj{NUM_TRAJ}_maxtraj{MAX_TRAJ}').format(
+                    ENV_NAME=env_name,
+                    ENV_SIZE=env_size,
+                    DEFAULT=default,
+                    TAB=tabular_obs,
+                    ALPHA=alpha,
+                    SEED=seed,
+                    NUM_TRAJ=num_trajectory,
+                    MAX_TRAJ=max_trajectory_length)
+  # Loads the dictionary representing the state-visitation distribution of the behaviour policy
+  with open(os.path.join('./state_visitation_mismatch', file_name), 'rb') as f:
+    distribution_correction_ratios = pickle.load(f)
+
+  # Reset all the values in the dictionary copy
+  for key in distribution_correction_ratios:
+    distribution_correction_ratios[key] = None
+
   for step in range(num_steps):
-    transitions_batch = dataset.get_step(batch_size, num_steps=2)
-    initial_steps_batch, _ = dataset.get_episode(
-        batch_size, truncate_episode_at=1)
-    initial_steps_batch = tf.nest.map_structure(lambda t: t[:, 0, ...],
-                                                initial_steps_batch)
-    losses = estimator.train_step(initial_steps_batch, transitions_batch,
-                                  target_policy)
+    # batch_size = Number of transitions per batch, num_steps = Number of consecutive steps per transition (current and next step)
+    transitions_batch = dataset.get_step(batch_size, num_steps=2)  # Samples a batch of transitions (current and next step) from the dataset
+    # batch_size = Number of episodes per batch, truncate_episode_at = Number of steps per episode
+    initial_steps_batch, _ = dataset.get_episode(batch_size, truncate_episode_at=1)  # Samples a batch of episodes truncated at 1 step from the dataset
+    initial_steps_batch = tf.nest.map_structure(lambda t: t[:, 0, ...], initial_steps_batch)  # Extracts only the initial steps from the batch of episodes
+    nu_loss, zeta_loss, lam_loss, ratios = estimator.train_step(initial_steps_batch, transitions_batch, target_policy)  # Performs a training step based on the batch
+    losses = nu_loss, zeta_loss, lam_loss
     running_losses.append(losses)
+
+    if step == num_steps -1:
+      distribution_correction_ratios = create_state_visitation_distribution(distribution_correction_ratios, transitions_batch, ratios)
+
     if step % 500 == 0 or step == num_steps - 1:
       estimate = estimator.estimate_average_reward(dataset, target_policy)
       running_estimates.append(estimate)
       running_losses = []
     global_step.assign_add(1)
+
+  # Generates a new file name to save the distribution correction ratios
+  ratio_file_name = ('3b_distribution_correction_ratios_{ENV_NAME}_size{ENV_SIZE}_default{DEFAULT}_tabular{TAB}_'
+              'alpha{ALPHA}_seed{SEED}_numtraj{NUM_TRAJ}_maxtraj{MAX_TRAJ}').format(
+                  ENV_NAME=env_name,
+                  ENV_SIZE=env_size,
+                  DEFAULT=default,
+                  TAB=tabular_obs,
+                  ALPHA=alpha,
+                  SEED=seed,
+                  NUM_TRAJ=num_trajectory,
+                  MAX_TRAJ=max_trajectory_length)
+  # Saves the distribution correction ratios to a file
+  with open(os.path.join('./state_visitation_mismatch', ratio_file_name), 'wb') as f:
+    pickle.dump(distribution_correction_ratios, f)
+
+  # Stores the ground and last estimate of the normalised expected cumulative discounted reward in a tuple
+  cumulative_reward = (ground_truth, running_estimates[-1])
+
+  # Generates a new file name to save the normalised expected cumulative discounted reward (ground truth and last estimate)
+  # ground truth = Normalised expected cumulative discounted reward directly from the dataset
+  # last estimate = Last estimation of the normalised expected cumulative discounted reward from the estimator
+  cumulative_reward_file_name = ('4_cumulative_reward_{ENV_NAME}_size{ENV_SIZE}_default{DEFAULT}_tabular{TAB}_'
+              'alpha{ALPHA}_seed{SEED}_numtraj{NUM_TRAJ}_maxtraj{MAX_TRAJ}').format(
+                  ENV_NAME=env_name,
+                  ENV_SIZE=env_size,
+                  DEFAULT=default,
+                  TAB=tabular_obs,
+                  ALPHA=alpha,
+                  SEED=seed,
+                  NUM_TRAJ=num_trajectory,
+                  MAX_TRAJ=max_trajectory_length)
+  # Saves the normalised expected cumulative discounted reward to a file
+  with open(os.path.join('./state_visitation_mismatch', cumulative_reward_file_name), 'wb') as f:
+    pickle.dump(cumulative_reward, f)
+
+  # Generates a new file name to save the cumulative reward convergence
+  cumulative_reward_convergence_file_name = ('5_cumulative_reward_convergence_{ENV_NAME}_size{ENV_SIZE}_default{DEFAULT}_tabular{TAB}_'
+              'alpha{ALPHA}_seed{SEED}_numtraj{NUM_TRAJ}_maxtraj{MAX_TRAJ}').format(
+                  ENV_NAME=env_name,
+                  ENV_SIZE=env_size,
+                  DEFAULT=default,
+                  TAB=tabular_obs,
+                  ALPHA=alpha,
+                  SEED=seed,
+                  NUM_TRAJ=num_trajectory,
+                  MAX_TRAJ=max_trajectory_length)
+  # Saves the cumulative reward convergence to a file
+  with open(os.path.join('./state_visitation_mismatch', cumulative_reward_convergence_file_name), 'wb') as f:
+    pickle.dump(running_estimates, f)
 
   print('Done!')
 

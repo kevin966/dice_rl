@@ -28,13 +28,21 @@ import pickle
 from tf_agents.environments import gym_wrapper
 from tf_agents.environments import tf_py_environment
 
-from dice_rl.environments.env_policies import get_target_policy
-import dice_rl.environments.gridworld.navigation as navigation
-import dice_rl.environments.gridworld.taxi as taxi
-from dice_rl.estimators.tabular_dual_dice import TabularDualDice
-import dice_rl.utils.common as common_utils
-from dice_rl.data.dataset import Dataset, EnvStep, StepType
-from dice_rl.data.tf_offpolicy_dataset import TFOffpolicyDataset
+import sys, os; sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# from dice_rl.environments.env_policies import get_target_policy
+# import dice_rl.environments.gridworld.navigation as navigation
+# import dice_rl.environments.gridworld.taxi as taxi
+# from dice_rl.estimators.tabular_dual_dice import TabularDualDice
+# import dice_rl.utils.common as common_utils
+# from dice_rl.data.dataset import Dataset, EnvStep, StepType
+# from dice_rl.data.tf_offpolicy_dataset import TFOffpolicyDataset
+from environments.env_policies import get_target_policy
+import environments.gridworld.navigation as navigation
+import environments.gridworld.taxi as taxi
+from estimators.tabular_dual_dice import TabularDualDice
+import utils.common as common_utils
+from data.dataset import Dataset, EnvStep, StepType
+from data.tf_offpolicy_dataset import TFOffpolicyDataset
 
 
 FLAGS = flags.FLAGS
