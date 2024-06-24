@@ -1,12 +1,7 @@
-# DICE: The DIstribution Correction Estimation Library
+# TU Delft CSE3000 Research Project
+This repositoy is part of the [Research Project](https://github.com/TU-Delft-CSE/Research-Project) course of TU Delft for the 4th quarter of the academic year 2023-2024 and was conducted under the research project 'Behavior-agnostic Reinforcement Learning: We Have Data! Now What?'.
 
-This library unifies the distribution correction estimation algorithms for off-policy evaluation, including:
-* [DualDICE: Behavior-Agnostic Estimation of Discounted Stationary Distribution Corrections](https://arxiv.org/abs/1906.04733)
-* [GenDICE: Generalized Offline Estimation of Stationary Values](https://arxiv.org/abs/2002.09072)
-* [Reinforcement Learning via Fenchel-Rockafellar Duality](https://arxiv.org/abs/2001.01866)
-Please cite these work accordingly upon using this library.
-
-## RESEARCH PROJECT CSE3000
+## How to Run the Code
 Adjust the variables at the beginning of the main method of 'calculate_visitation_mismatch.py' to obtain the desired datasets and plots.
 
 Afterwards, run the following command to generate the datasets and plots utilised in the research paper:
@@ -14,6 +9,14 @@ Afterwards, run the following command to generate the datasets and plots utilise
     python3 state_visitation_mismatch/calculate_visitation_mismatch.py
 
 Don't pass along the 'gym_kwargs' variable in 'create_dataset.py' when calling the 'get_onpolicy_dataset' method to obtain the cumulative reward convergence plot.
+
+# Original README File - DICE: The DIstribution Correction Estimation Library
+
+This library unifies the distribution correction estimation algorithms for off-policy evaluation, including:
+* [DualDICE: Behavior-Agnostic Estimation of Discounted Stationary Distribution Corrections](https://arxiv.org/abs/1906.04733)
+* [GenDICE: Generalized Offline Estimation of Stationary Values](https://arxiv.org/abs/2002.09072)
+* [Reinforcement Learning via Fenchel-Rockafellar Duality](https://arxiv.org/abs/2001.01866)
+Please cite these work accordingly upon using this library.
 
 ## Summary
 Existing DICE algorithms are the results of particular regularization choices in the Lagrangian of the Q-LP and d-LP policy values.
