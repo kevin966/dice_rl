@@ -225,7 +225,7 @@ def main():
 	plt.figure(figsize=(10, 6))
 	# plt.boxplot(mse_lists, tick_labels=[f'KL={kd:.2f}' for kd in kl_divergence_list])
 	plt.boxplot(mse_lists, tick_labels=[f'KL={kd:.2f}' for kd in kl_divergence_list], whis=10.0)
-	plt.title('KL Divergence vs. MSE')
+	plt.title('KL Divergence vs. MSE (Size: Default)')
 	plt.xlabel('KL Divergence')
 	plt.ylabel('MSE')
 	plt.legend()
